@@ -1,0 +1,22 @@
+services:
+  transfersh:
+    image: dutchcoders/transfer.sh:latest
+    container_name: transfersh
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      BASEDIR: /uploads
+      TEMP_PATH: /tmp/transfersh
+      PURGE_DAYS: "1"
+      PURGE_INTERVAL: "1"
+      MAX_UPLOAD_SIZE: "1048576"
+      RATE_LIMIT: "60"
+    command: ["--provider", "local"]
+    volumes:
+      - uploads:/uploads
+      - temp:/tmp/transfersh
+
+volumes:
+  uploads:
+  temp:
