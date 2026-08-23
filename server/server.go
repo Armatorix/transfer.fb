@@ -116,7 +116,8 @@ func YtDlpMaxFilesize(s string) OptionFn {
 	}
 }
 
-// YtDlpMaxConcurrent sets how many yt-dlp downloads may run at the same time
+// YtDlpMaxConcurrent sets how many yt-dlp downloads may run at the same time,
+// the requests over that limit wait for a free slot
 func YtDlpMaxConcurrent(n int) OptionFn {
 	return func(srvr *Server) {
 		srvr.ytDlpMaxConcurrent = n

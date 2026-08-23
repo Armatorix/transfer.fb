@@ -54,8 +54,9 @@ const (
 	// YtDlpDefaultTimeout is the maximum duration of a single yt-dlp run
 	YtDlpDefaultTimeout = 10 * time.Minute
 
-	// YtDlpDefaultMaxConcurrent is the number of yt-dlp downloads running at the same time
-	YtDlpDefaultMaxConcurrent = 2
+	// YtDlpDefaultMaxConcurrent is the number of yt-dlp downloads running at
+	// the same time, the requests over that limit wait for a free slot
+	YtDlpDefaultMaxConcurrent = 1
 
 	// YtDlpDefaultAudioFormat is used when only the audio track is requested
 	YtDlpDefaultAudioFormat = "mp3"
@@ -341,21 +342,30 @@ func ytDlpResultFile(dir, stdout string) (string, error) {
 	return biggest, nil
 }
 
-// acquireYtDlpSlot limits the number of yt-dlp processes running at the same time
-func (s *Server) acquireYtDlpSlot() bool {
+// acquireYtDlpSlot limits the number of yt-dlp processes running at the same
+// time. The requests over that limit queue up, waiting for a running download
+// to release its slot, and only give up when ctx is done, i.e. when the client
+// closed the connection or the server is shutting down
+func (s *Server) acquireYtDlpSlot(ctx context.Context) error {
 	select {
 	case s.ytDlpSlots <- struct{}{}:
-		return true
+		return nil
 	default:
-		return false
+	}
+
+	s.logger.Print("Waiting for a free yt-dlp slot")
+
+	select {
+	case s.ytDlpSlots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
+// releaseYtDlpSlot hands the slot taken by acquireYtDlpSlot to the next waiter
 func (s *Server) releaseYtDlpSlot() {
-	select {
-	case <-s.ytDlpSlots:
-	default:
-	}
+	<-s.ytDlpSlots
 }
 
 // ytDlpHandler downloads the media behind the provided url with yt-dlp, stores
@@ -378,9 +388,9 @@ func (s *Server) ytDlpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.acquireYtDlpSlot() {
-		w.Header().Set("Retry-After", "60")
-		http.Error(w, "too many yt-dlp downloads in progress", http.StatusServiceUnavailable)
+	if err := s.acquireYtDlpSlot(r.Context()); err != nil {
+		s.logger.Printf("Gave up waiting for a yt-dlp slot: %s", err)
+		http.Error(w, "gave up waiting for a free yt-dlp slot", http.StatusRequestTimeout)
 		return
 	}
 	defer s.releaseYtDlpSlot()

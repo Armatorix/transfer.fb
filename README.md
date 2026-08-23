@@ -105,6 +105,10 @@ request asks for `Accept: application/json`. The `Max-Downloads`, `Max-Days`
 and `X-Encrypt-Password` request headers are honoured like on a regular upload,
 and the deletion url is always returned in the `X-Url-Delete` header.
 
+Only one download runs at a time, the other requests wait for their turn until
+the client gives up. Raise `ytdlp-max-concurrent` to let more of them run in
+parallel.
+
 <br />
 
 ### Deleting
@@ -256,7 +260,7 @@ ytdlp-path | path to the yt-dlp executable                                      
 ytdlp-format | default yt-dlp format selector, e.g. bestvideo+bestaudio                         |                               | YTDLP_FORMAT                  |
 ytdlp-max-filesize | abort yt-dlp downloads bigger than this, e.g. 500M                         |                               | YTDLP_MAX_FILESIZE            |
 ytdlp-timeout | max duration in seconds of a single yt-dlp download                             | 600                           | YTDLP_TIMEOUT                 |
-ytdlp-max-concurrent | max number of yt-dlp downloads running at the same time                  | 2                             | YTDLP_MAX_CONCURRENT          |
+ytdlp-max-concurrent | max number of yt-dlp downloads running at the same time, further requests wait for a free slot | 1           | YTDLP_MAX_CONCURRENT          |
 rate-limit | request per minute                                                                     |                               | RATE_LIMIT                    |
 max-upload-size | max upload size in kilobytes                                                      |                               | MAX_UPLOAD_SIZE               |
 purge-days | number of days after the uploads are purged automatically                              |                               | PURGE_DAYS                    |   

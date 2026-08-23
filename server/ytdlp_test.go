@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"log"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "gopkg.in/check.v1"
 )
@@ -149,19 +151,77 @@ func (s *suiteYtDlp) TestHandlerRejectsInvalidURL(c *C) {
 	c.Assert(w.Result().StatusCode, Equals, http.StatusBadRequest)
 }
 
-func (s *suiteYtDlp) TestHandlerRejectsWhenBusy(c *C) {
+func (s *suiteYtDlp) TestAcquireSlotWaitsForARelease(c *C) {
+	srvr, err := New(YtDlpMaxConcurrent(1), Logger(discardLogger()))
+	c.Assert(err, IsNil)
+
+	c.Assert(srvr.acquireYtDlpSlot(context.Background()), IsNil)
+
+	acquired := make(chan error, 1)
+	go func() {
+		acquired <- srvr.acquireYtDlpSlot(context.Background())
+	}()
+
+	select {
+	case <-acquired:
+		c.Fatal("second download did not wait for the running one")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	srvr.releaseYtDlpSlot()
+
+	select {
+	case err := <-acquired:
+		c.Assert(err, IsNil)
+		srvr.releaseYtDlpSlot()
+	case <-time.After(time.Second):
+		c.Fatal("second download was not started after the slot was released")
+	}
+}
+
+func (s *suiteYtDlp) TestAcquireSlotGivesUpWithTheClient(c *C) {
+	srvr, err := New(YtDlpMaxConcurrent(1), Logger(discardLogger()))
+	c.Assert(err, IsNil)
+
+	c.Assert(srvr.acquireYtDlpSlot(context.Background()), IsNil)
+	defer srvr.releaseYtDlpSlot()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c.Assert(srvr.acquireYtDlpSlot(ctx), Equals, context.Canceled)
+}
+
+func (s *suiteYtDlp) TestHandlerGivesUpWhenTheClientIsGone(c *C) {
 	srvr, err := New(EnableYtDlp(), YtDlpMaxConcurrent(1), Logger(discardLogger()))
 	c.Assert(err, IsNil)
 
-	c.Assert(srvr.acquireYtDlpSlot(), Equals, true)
+	c.Assert(srvr.acquireYtDlpSlot(context.Background()), IsNil)
 	defer srvr.releaseYtDlpSlot()
 
-	req := httptest.NewRequest("POST", "http://test/ytdlp", strings.NewReader("https://example.com/v"))
+	ctx, cancel := context.WithCancel(context.Background())
+
+	req := httptest.NewRequest("POST", "http://test/ytdlp", strings.NewReader("https://example.com/v")).WithContext(ctx)
 	w := httptest.NewRecorder()
 
-	srvr.ytDlpHandler(w, req)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srvr.ytDlpHandler(w, req)
+	}()
 
-	resp := w.Result()
-	c.Assert(resp.StatusCode, Equals, http.StatusServiceUnavailable)
-	c.Assert(resp.Header.Get("Retry-After"), Equals, "60")
+	select {
+	case <-done:
+		c.Fatal("handler did not wait for a free slot")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+		c.Assert(w.Result().StatusCode, Equals, http.StatusRequestTimeout)
+	case <-time.After(time.Second):
+		c.Fatal("handler kept waiting after the client was gone")
+	}
 }

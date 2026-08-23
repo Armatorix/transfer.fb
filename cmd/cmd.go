@@ -281,7 +281,7 @@ var globalFlags = []cli.Flag{
 	},
 	&cli.IntFlag{
 		Name:    "ytdlp-max-concurrent",
-		Usage:   "max number of yt-dlp downloads running at the same time",
+		Usage:   "max number of yt-dlp downloads running at the same time, further requests wait for a free slot",
 		Value:   server.YtDlpDefaultMaxConcurrent,
 		EnvVars: []string{"YTDLP_MAX_CONCURRENT"},
 	},
