@@ -5,3 +5,6 @@ lint:
 
 build:
 	docker build --build-arg RUNAS=transferfb -t transferfb:latest .
+
+build-linux:
+	docker build --build-arg RUNAS=transferfb --platform linux/amd64 -t transferfb:latest .
