@@ -3,7 +3,7 @@ ARG GO_VERSION=1.24
 FROM golang:${GO_VERSION}-alpine as build
 
 # Necessary to run 'go get' and to compile the linked binary
-RUN apk add git musl-dev mailcap
+RUN apk add git musl-dev
 
 WORKDIR /go/src/github.com/dutchcoders/transfer.sh
 
@@ -16,26 +16,28 @@ COPY . .
 # build & install server
 RUN CGO_ENABLED=0 go build -tags netgo -ldflags "-X github.com/dutchcoders/transfer.sh/cmd.Version=$(git describe --tags) -a -s -w -extldflags '-static'" -o /go/bin/transfersh
 
+FROM alpine:3.21 AS final
+LABEL maintainer="Andrea Spacca <andrea.spacca@gmail.com>"
+
 ARG PUID=5000 \
     PGID=5000 \
     RUNAS
 
-RUN mkdir -p /tmp/useradd /tmp/empty && \
-    if [ ! -z "$RUNAS" ]; then \
-    echo "${RUNAS}:x:${PUID}:${PGID}::/nonexistent:/sbin/nologin" >> /tmp/useradd/passwd && \
-    echo "${RUNAS}:!:::::::" >> /tmp/useradd/shadow && \
-    echo "${RUNAS}:x:${PGID}:" >> /tmp/useradd/group && \
-    echo "${RUNAS}:!::" >> /tmp/useradd/groupshadow; else touch /tmp/useradd/unused; fi
+# ca-certificates and mime.types are needed by the server itself, yt-dlp needs
+# python and relies on ffmpeg to merge and convert the media it downloads
+RUN apk add --no-cache ca-certificates mailcap ffmpeg python3 && \
+    apk add --no-cache --virtual .ytdlp-deps py3-pip && \
+    python3 -m venv /opt/yt-dlp && \
+    /opt/yt-dlp/bin/pip install --no-cache-dir yt-dlp && \
+    ln -s /opt/yt-dlp/bin/yt-dlp /usr/local/bin/yt-dlp && \
+    apk del .ytdlp-deps && \
+    yt-dlp --version
 
-FROM scratch AS final
-LABEL maintainer="Andrea Spacca <andrea.spacca@gmail.com>"
-ARG RUNAS
+RUN if [ ! -z "$RUNAS" ]; then \
+    addgroup -g "${PGID}" "${RUNAS}" && \
+    adduser -D -H -u "${PUID}" -G "${RUNAS}" -s /sbin/nologin "${RUNAS}"; fi
 
-COPY --from=build /etc/mime.types /etc/mime.types
-COPY --from=build /tmp/empty /tmp
-COPY --from=build /tmp/useradd/* /etc/
-COPY --from=build --chown=${RUNAS}  /go/bin/transfersh /go/bin/transfersh
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build --chown=${RUNAS} /go/bin/transfersh /go/bin/transfersh
 
 USER ${RUNAS}
 

@@ -80,6 +80,49 @@ func PerformClamavPrescan(b bool) OptionFn {
 	}
 }
 
+// EnableYtDlp enables the yt-dlp download endpoint
+func EnableYtDlp() OptionFn {
+	return func(srvr *Server) {
+		srvr.ytDlpEnabled = true
+	}
+}
+
+// YtDlpPath sets the path of the yt-dlp executable
+func YtDlpPath(s string) OptionFn {
+	return func(srvr *Server) {
+		srvr.ytDlpPath = s
+	}
+}
+
+// YtDlpFormat sets the default yt-dlp format selector
+func YtDlpFormat(s string) OptionFn {
+	return func(srvr *Server) {
+		srvr.ytDlpFormat = s
+	}
+}
+
+// YtDlpTimeout sets the maximum duration of a single yt-dlp download
+func YtDlpTimeout(seconds int) OptionFn {
+	return func(srvr *Server) {
+		srvr.ytDlpTimeout = time.Duration(seconds) * time.Second
+	}
+}
+
+// YtDlpMaxFilesize sets the max size of a media downloaded by yt-dlp, as
+// accepted by its --max-filesize flag, e.g. 500M
+func YtDlpMaxFilesize(s string) OptionFn {
+	return func(srvr *Server) {
+		srvr.ytDlpMaxFilesize = s
+	}
+}
+
+// YtDlpMaxConcurrent sets how many yt-dlp downloads may run at the same time
+func YtDlpMaxConcurrent(n int) OptionFn {
+	return func(srvr *Server) {
+		srvr.ytDlpMaxConcurrent = n
+	}
+}
+
 // VirustotalKey sets virus total key
 func VirustotalKey(s string) OptionFn {
 	return func(srvr *Server) {
@@ -368,6 +411,14 @@ type Server struct {
 	ClamAVDaemonHost     string
 	performClamavPrescan bool
 
+	ytDlpEnabled       bool
+	ytDlpPath          string
+	ytDlpFormat        string
+	ytDlpMaxFilesize   string
+	ytDlpTimeout       time.Duration
+	ytDlpMaxConcurrent int
+	ytDlpSlots         chan struct{}
+
 	tempPath string
 
 	webPath      string
@@ -398,6 +449,12 @@ func New(options ...OptionFn) (*Server, error) {
 	for _, optionFn := range options {
 		optionFn(s)
 	}
+
+	if s.ytDlpMaxConcurrent < 1 {
+		s.ytDlpMaxConcurrent = YtDlpDefaultMaxConcurrent
+	}
+
+	s.ytDlpSlots = make(chan struct{}, s.ytDlpMaxConcurrent)
 
 	return s, nil
 }
@@ -518,6 +575,8 @@ func (s *Server) Run() {
 
 	r.HandleFunc("/{token}/{filename}", getHandlerFn).Methods("GET")
 	r.HandleFunc("/{action:(?:download|get|inline)}/{token}/{filename}", getHandlerFn).Methods("GET")
+
+	r.HandleFunc("/ytdlp", s.basicAuthHandler(http.HandlerFunc(s.ytDlpHandler))).Methods("POST", "PUT")
 
 	r.HandleFunc("/{filename}/virustotal", s.virusTotalHandler).Methods("PUT")
 	r.HandleFunc("/{filename}/scan", s.scanHandler).Methods("PUT")

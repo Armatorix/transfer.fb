@@ -211,6 +211,18 @@ func acceptsHTML(hdr http.Header) bool {
 	return false
 }
 
+func acceptsJSON(hdr http.Header) bool {
+	actual := header.ParseAccept(hdr, "Accept")
+
+	for _, s := range actual {
+		if s.Value == "application/json" {
+			return true
+		}
+	}
+
+	return false
+}
+
 func formatSize(size int64) string {
 	sizeFloat := float64(size)
 	base := math.Log(sizeFloat) / math.Log(1024)

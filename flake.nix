@@ -59,6 +59,12 @@
               log = mkOption { type = types.nullOr types.str; description = "path to log file"; };
               cors-domains = mkOption { type = types.nullOr (types.listOf types.str); description = "comma separated list of domains for CORS, setting it enable CORS "; };
               clamav-host = mkOption { type = types.nullOr types.str; description = "host for clamav feature"; };
+              ytdlp = mkOption { type = types.nullOr types.bool; description = "enable the /ytdlp endpoint, downloading media from a remote url with yt-dlp"; };
+              ytdlp-path = mkOption { type = types.nullOr types.str; description = "path to the yt-dlp executable"; };
+              ytdlp-format = mkOption { type = types.nullOr types.str; description = "default yt-dlp format selector, e.g. bestvideo+bestaudio"; };
+              ytdlp-max-filesize = mkOption { type = types.nullOr types.str; description = "abort yt-dlp downloads bigger than this, e.g. 500M"; };
+              ytdlp-timeout = mkOption { type = types.nullOr types.int; description = "max duration in seconds of a single yt-dlp download"; };
+              ytdlp-max-concurrent = mkOption { type = types.nullOr types.int; description = "max number of yt-dlp downloads running at the same time"; };
               rate-limit = mkOption { type = types.nullOr types.int; description = "request per minute"; };
               max-upload-size = mkOption { type = types.nullOr types.int; description = "max upload size in kilobytes  "; };
               purge-days = mkOption { type = types.nullOr types.int; description = "number of days after the uploads are purged automatically "; };
@@ -169,6 +175,8 @@
                     systemd.services.transfer-sh = {
                       wantedBy = [ "multi-user.target" ];
                       after = [ "network.target" ];
+                      # yt-dlp shells out to ffmpeg to merge and convert media
+                      path = optionals (cfg.ytdlp == true) [ pkgs.yt-dlp pkgs.ffmpeg ];
                       serviceConfig = {
                         User = cfg.user;
                         Group = cfg.group;

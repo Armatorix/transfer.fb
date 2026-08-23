@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/dutchcoders/transfer.sh/server/storage"
 
@@ -248,6 +250,41 @@ var globalFlags = []cli.Flag{
 		Usage:   "perform-clamav-prescan",
 		EnvVars: []string{"PERFORM_CLAMAV_PRESCAN"},
 	},
+	&cli.BoolFlag{
+		Name:    "ytdlp",
+		Usage:   "enable the /ytdlp endpoint, downloading media from a remote url with yt-dlp",
+		EnvVars: []string{"YTDLP"},
+	},
+	&cli.StringFlag{
+		Name:    "ytdlp-path",
+		Usage:   "path to the yt-dlp executable",
+		Value:   server.YtDlpDefaultBinary,
+		EnvVars: []string{"YTDLP_PATH"},
+	},
+	&cli.StringFlag{
+		Name:    "ytdlp-format",
+		Usage:   "default yt-dlp format selector, e.g. bestvideo+bestaudio",
+		Value:   "",
+		EnvVars: []string{"YTDLP_FORMAT"},
+	},
+	&cli.StringFlag{
+		Name:    "ytdlp-max-filesize",
+		Usage:   "abort yt-dlp downloads bigger than this, e.g. 500M",
+		Value:   "",
+		EnvVars: []string{"YTDLP_MAX_FILESIZE"},
+	},
+	&cli.IntFlag{
+		Name:    "ytdlp-timeout",
+		Usage:   "max duration in seconds of a single yt-dlp download",
+		Value:   int(server.YtDlpDefaultTimeout / time.Second),
+		EnvVars: []string{"YTDLP_TIMEOUT"},
+	},
+	&cli.IntFlag{
+		Name:    "ytdlp-max-concurrent",
+		Usage:   "max number of yt-dlp downloads running at the same time",
+		Value:   server.YtDlpDefaultMaxConcurrent,
+		EnvVars: []string{"YTDLP_MAX_CONCURRENT"},
+	},
 	&cli.StringFlag{
 		Name:    "virustotal-key",
 		Usage:   "virustotal-key",
@@ -415,6 +452,36 @@ func New() *Cmd {
 			}
 
 			options = append(options, server.PerformClamavPrescan(v))
+		}
+
+		if c.Bool("ytdlp") {
+			ytDlpPath := c.String("ytdlp-path")
+			if ytDlpPath == "" {
+				ytDlpPath = server.YtDlpDefaultBinary
+			}
+
+			resolved, err := exec.LookPath(ytDlpPath)
+			if err != nil {
+				return fmt.Errorf("yt-dlp executable not found: %w", err)
+			}
+
+			options = append(options, server.EnableYtDlp(), server.YtDlpPath(resolved))
+
+			if v := c.String("ytdlp-format"); v != "" {
+				options = append(options, server.YtDlpFormat(v))
+			}
+
+			if v := c.String("ytdlp-max-filesize"); v != "" {
+				options = append(options, server.YtDlpMaxFilesize(v))
+			}
+
+			if v := c.Int("ytdlp-timeout"); v > 0 {
+				options = append(options, server.YtDlpTimeout(v))
+			}
+
+			if v := c.Int("ytdlp-max-concurrent"); v > 0 {
+				options = append(options, server.YtDlpMaxConcurrent(v))
+			}
 		}
 
 		if v := c.Int64("max-upload-size"); v > 0 {

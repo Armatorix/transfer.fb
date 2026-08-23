@@ -69,6 +69,44 @@ $ curl -X PUT --upload-file nhgbhhj https://transfer.sh/test.txt/virustotal
 
 <br />
 
+### Download from a url with yt-dlp
+
+The `/ytdlp` endpoint hands a url over to [yt-dlp](https://github.com/yt-dlp/yt-dlp),
+stores whatever it downloaded like any other upload and answers with its
+temporary download url. It has to be enabled with the `ytdlp` flag, needs the
+`yt-dlp` executable on the server and is subject to the same http auth as the
+upload endpoints.
+
+```bash
+$ curl -X POST -d 'https://example.com/watch?v=video' https://transfer.sh/ytdlp
+https://transfer.sh/BAYh0/the_video.mp4
+```
+
+The url can also be sent as json, as a form or as a query parameter, along with
+these optional parameters:
+
+Parameter | Description
+--- | ---
+url | the url to download from, the only mandatory parameter
+filename | name to store the media under, defaults to the one yt-dlp derived from the media metadata
+format | yt-dlp format selector for this download, e.g. `bestvideo+bestaudio`
+audio_only | extract the audio track instead of storing the full media
+audio_format | container the audio track is converted to, defaults to `mp3`
+
+```bash
+$ curl -X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
+    -d '{"url": "https://example.com/watch?v=video", "audio_only": true}' \
+    https://transfer.sh/ytdlp
+{"url":"https://transfer.sh/BAYh0/the_video.mp3","delete_url":"https://transfer.sh/BAYh0/the_video.mp3/PDw0NpTG","filename":"the_video.mp3","content_type":"audio/mpeg","size":4194304}
+```
+
+The response is the download url as plain text, or the json above when the
+request asks for `Accept: application/json`. The `Max-Downloads`, `Max-Days`
+and `X-Encrypt-Password` request headers are honoured like on a regular upload,
+and the deletion url is always returned in the `X-Url-Delete` header.
+
+<br />
+
 ### Deleting
 
 ```bash
@@ -213,6 +251,12 @@ log | path to log file                                                          
 cors-domains | comma separated list of domains for CORS, setting it enable CORS                     |                               | CORS_DOMAINS                  |
 clamav-host | host for clamav feature                                                               |                               | CLAMAV_HOST                   |
 perform-clamav-prescan | prescan every upload using clamav (clamav-host must be local clamd unix socket)    |                       | PERFORM_CLAMAV_PRESCAN        |
+ytdlp | enable the /ytdlp endpoint, downloading media from a remote url with yt-dlp             | false                         | YTDLP                         |
+ytdlp-path | path to the yt-dlp executable                                                      | yt-dlp                        | YTDLP_PATH                    |
+ytdlp-format | default yt-dlp format selector, e.g. bestvideo+bestaudio                         |                               | YTDLP_FORMAT                  |
+ytdlp-max-filesize | abort yt-dlp downloads bigger than this, e.g. 500M                         |                               | YTDLP_MAX_FILESIZE            |
+ytdlp-timeout | max duration in seconds of a single yt-dlp download                             | 600                           | YTDLP_TIMEOUT                 |
+ytdlp-max-concurrent | max number of yt-dlp downloads running at the same time                  | 2                             | YTDLP_MAX_CONCURRENT          |
 rate-limit | request per minute                                                                     |                               | RATE_LIMIT                    |
 max-upload-size | max upload size in kilobytes                                                      |                               | MAX_UPLOAD_SIZE               |
 purge-days | number of days after the uploads are purged automatically                              |                               | PURGE_DAYS                    |   
@@ -222,6 +266,12 @@ random-token-length | length of random token for upload path (double the size fo
 If you want to use TLS using lets encrypt certificates, set lets-encrypt-hosts to your domain, set tls-listener to :443 and enable force-https.
 
 If you want to use TLS using your own certificates, set tls-listener to :443, force-https, tls-cert-file and tls-private-key.
+
+The `ytdlp` flag makes the server download from urls its users provide, so it is
+disabled by default: only enable it when the upload endpoints are protected, for
+instance with http auth, and keep in mind the server needs the `yt-dlp`
+executable (and `ffmpeg`, used by yt-dlp to merge and convert media) in its
+path. The docker image ships both.
 
 <br />
 
@@ -260,6 +310,13 @@ $ go build -o transfersh main.go
 ## Docker
 
 For easy deployment, we've created an official Docker container. There are two variants, differing only by which user runs the process.
+
+The image is based on Alpine and carries `yt-dlp` and `ffmpeg`, so the `/ytdlp`
+endpoint only needs the `YTDLP` env var (or the `--ytdlp` flag) to be turned on:
+
+```bash
+docker run --publish 8080:8080 --env YTDLP=true dutchcoders/transfer.sh:latest-noroot --provider local --basedir /tmp/
+```
 
 The default one will run as `root`:
 
